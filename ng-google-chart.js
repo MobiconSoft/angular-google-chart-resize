@@ -3,6 +3,7 @@
  * @version 0.0.9
  * @author Nicolas Bouillon <nicolas@bouil.org>
  * @author GitHub contributors
+ * @moidifier Peter Yun <nulpulum@gmail.com>
  * @license MIT
  * @year 2013
  */
@@ -12,12 +13,31 @@
     angular.module('googlechart', [])
 
         .constant('googleChartApiConfig', {
-            version: '1',
+            version: '1.0',
             optionalSettings: {
                 packages: ['corechart']
             }
         })
 
+        /**
+         * 인코딩 주의)
+         * index.html 안에 UTF-8 설정
+         * <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+         *
+         * 사용예)
+         * <script type="text/javascript" src="https://www.google.com/jsapi"></script>
+         * <script type="text/javascript">
+         *   google.load('visualization', '1.0', {'packages':['corechart']});
+         *   google.setOnLoadCallback(drawChart);
+         *   function drawChart() { ... }
+         * </script>
+         *
+         * @변경 : jsapi.js 파일을 로컬에서 읽어오도록 수정할 수 있다
+         * googleJsapiUrlProvider.setProtocol(undiefined);
+         * googleJsapiUrlProvider.setUrl('jsapi.js');
+         *
+         * @참조 : https://google-developers.appspot.com/chart/interactive/docs/quick_start
+         */
         .provider('googleJsapiUrl', function () {
             var protocol = 'https:';
             var url = '//www.google.com/jsapi';
@@ -34,6 +54,16 @@
                 return (protocol ? protocol : '') + url;
             };
         })
+
+        /**
+         * google.load('visualization', '1.0', {'packages':['corechart']}); 수행하는 팩토리
+         *
+         * @param  {[type]} $rootScope     [description]
+         * @param  {[type]} $q             [description]
+         * @param  {[type]} apiConfig      [description]
+         * @param  {[type]} googleJsapiUrl [description]
+         * @return {[type]}                [description]
+         */
         .factory('googleChartApiPromise', ['$rootScope', '$q', 'googleChartApiConfig', 'googleJsapiUrl', function ($rootScope, $q, apiConfig, googleJsapiUrl) {
             var apiReady = $q.defer();
             var onLoad = function () {
@@ -60,10 +90,12 @@
 
             script.setAttribute('type', 'text/javascript');
             script.src = googleJsapiUrl;
-            
+
             if (script.addEventListener) { // Standard browsers (including IE9+)
+                //console.log('>>> 1. load jsapi...');
                 script.addEventListener('load', onLoad, false);
             } else { // IE8 and below
+                //console.log('>>> 2. load jsapi...');
                 script.onreadystatechange = function () {
                     if (script.readyState === 'loaded' || script.readyState === 'complete') {
                         script.onreadystatechange = null;
@@ -71,20 +103,33 @@
                     }
                 };
             }
-            
+
             head.appendChild(script);
 
             return apiReady.promise;
         }])
+
+        /**
+         * Element 또는 Attribute로 사용할 수 있다. Element 사용시에는 IE8+에 대한 고려가 있어야 함
+         *
+         * 사용예)
+         * <div google-chart chart="chartObject" style="height:300px; width:100%;"></div>
+         *
+         * @param  {[type]} $timeout              [description]
+         * @param  {[type]} $window               [description]
+         * @param  {[type]} $rootScope            [description]
+         * @param  {[type]} googleChartApiPromise [description]
+         * @return {[type]}                       [description]
+         */
         .directive('googleChart', ['$timeout', '$window', '$rootScope', 'googleChartApiPromise', function ($timeout, $window, $rootScope, googleChartApiPromise) {
             return {
-                restrict: 'A',
+                restrict: 'EA',
                 scope: {
                     chartOrig: '=chart',
                     onReady: '&',
                     select: '&'
                 },
-                link: function ($scope, $elm) {
+                link: function ($scope, $elm, attrs) {
                     // Watches, to refresh the chart when its data, title or dimensions change
                     $scope.$watch('chartOrig', function () {
 						$scope.chart = angular.copy($scope.chartOrig);
@@ -137,13 +182,11 @@
                                 }
                             }
 
-
                             //apply formats to dataTable
                             for (i = 0; i < $scope.formatters[formatType].length; i++) {
                                 if ($scope.chart.formatters[formatType][i].columnNum < dataTable.getNumberOfColumns())
                                     $scope.formatters[formatType][i].format(dataTable, $scope.chart.formatters[formatType][i].columnNum);
                             }
-
 
                             //Many formatters require HTML tags to display special formatting
                             if (formatType === 'arrow' || formatType === 'bar' || formatType === 'color')
@@ -152,8 +195,10 @@
                     }
 
                     function draw() {
+                        // 그리고 있는중에는 다시 그리기 안함
                         if (!draw.triggered && ($scope.chart != undefined)) {
                             draw.triggered = true;
+                            // ref: https://docs.angularjs.org/api/ng/service/$timeout
                             $timeout(function () {
                                 if (typeof($scope.formatters) === 'undefined')
                                     $scope.formatters = {};
@@ -180,6 +225,16 @@
                                         applyFormat(name, customFormatters[name], dataTable);
                                     }
                                 }
+								
+								// resize > 0 이상이면 적용됨  
+								// by peter yun
+								// <div style="height:100%" id="gc"> 
+								//	<div google-chart chart="chartObject" resize="#gc" style="width:100%;"></div>
+								// </div>
+								var height = angular.element(attrs.resize).height();
+								if(height) {
+									$scope.chart.options.height = height;
+								}
 
                                 var chartWrapperArgs = {
                                     chartType: $scope.chart.type,
@@ -211,12 +266,17 @@
                                 $timeout(function () {
                                     $elm.empty();
                                     $scope.chartWrapper.draw();
-									draw.triggered = false;
+									                  draw.triggered = false;
                                 });
                             }, 0, true);
                         }
                     }
 
+                    /**
+                     * jsapi의 load가 끝나면 draw하도록 promise를 걸어 놓은 것
+                     *
+                     * @return {[type]} [description]
+                     */
                     function drawAsync() {
                         googleChartApiPromise.then(function () {
                             draw();
@@ -226,6 +286,15 @@
             };
         }])
 
+        /**
+         * window즉 브라우져의 사이즈가 변경되면 google chart의 size를 변경토록 한다. 단 html설정에서 다음과 같이 되어야 한다
+         * <div google-chart chart="chartObject" style="height:300px; width:100%;"></div>
+         * height는 %가 아니라 자신이 속한 parent dive의 height를 따르도록 해주어야 한다
+         *
+         * @param  {[type]} $rootScope [description]
+         * @param  {[type]} $window    [description]
+         * @return {[type]}            [description]
+         */
         .run(['$rootScope', '$window', function ($rootScope, $window) {
             angular.element($window).bind('resize', function () {
                 $rootScope.$emit('resizeMsg');

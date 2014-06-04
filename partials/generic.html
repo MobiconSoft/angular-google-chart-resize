@@ -4,6 +4,8 @@
     Onions: <input type="number" ng-model="onions[1].v" />
 </div>
 
-<div google-chart chart="chartObject" style="height:600px; width:100%;"></div>
+<div style="height:100%" id="gc">
+	<div google-chart chart="chartObject" resize="#gc" style="width:100%;"></div>
+</div>
 
 <iframe src="partials/generic.js" style="width:90%; height: 600px; margin: 1%; border: 1px solid black;" frameborder="0"></iframe>
