@@ -3,7 +3,7 @@ angular.module("google-chart-sample").controller("GenericChartCtrl", function ($
 
     $scope.onions = [
         {v: "Onions"},
-        {v: 3},
+        {v: 20},
     ];
 
     $scope.chartObject.data = {"cols": [

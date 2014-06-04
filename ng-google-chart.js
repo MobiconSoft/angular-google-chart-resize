@@ -282,6 +282,11 @@
                             draw();
                         })
                     }
+					
+					$scope.$on('$destroy', function () {
+					   google.visualization.events.removeAllListeners($scope.chartWrapper);
+					   $scope.chartWrapper = null;
+					});
                 }
             };
         }])
